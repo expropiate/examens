@@ -39,7 +39,7 @@
     $simbolo_moneda=get_row('perfil','moneda', 'id_perfil', 1);
     // get the HTML
     ob_start();
-    include(dirname('__FILE__').'/res/factura_html.php');
+    include(dirname(__FILE__).'/res/factura_html.php');
     $content = ob_get_clean();
 
     try
