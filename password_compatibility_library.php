@@ -36,7 +36,6 @@ if (!defined('PASSWORD_DEFAULT')) {
         }
         switch ($algo) {
             case PASSWORD_BCRYPT:
-                // Note that this is a C constant, but not exposed to PHP, so we don't define it here.
                 $cost = 10;
                 if (isset($options['cost'])) {
                     $cost = $options['cost'];
@@ -45,9 +44,7 @@ if (!defined('PASSWORD_DEFAULT')) {
                         return null;
                     }
                 }
-                // The length of salt to generate
                 $raw_salt_len = 16;
-                // The length required in the final serialization
                 $required_salt_len = 22;
                 $hash_format = sprintf("$2y$%02d$", $cost);
                 break;
@@ -217,6 +214,3 @@ if (!defined('PASSWORD_DEFAULT')) {
         return $status === 0;
     }
 }
-
-
-
