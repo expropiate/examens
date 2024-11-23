@@ -1,5 +1,4 @@
 <?php
-
 /**
  * Class Login
  * Handles the user's login and logout process
@@ -38,14 +37,16 @@ class Login
     }
 
     /**
-     * Handle the login process
+     * Handle login process by breaking it into smaller functions
      */
     private function handleLogin()
     {
         if ($this->validateLoginForm()) {
             $this->connectToDatabase();
-            if ($this->db_connection && !$this->db_connection->connect_errno) {
-                $this->authenticateUser();
+
+            if ($this->isDatabaseConnected()) {
+                $user_name = $this->sanitizeInput($_POST['user_name']);
+                $this->authenticateUser($user_name);
             } else {
                 $this->errors[] = "Problema de conexión de base de datos.";
             }
@@ -77,23 +78,40 @@ class Login
     private function connectToDatabase()
     {
         $this->db_connection = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
-
         if (!$this->db_connection->set_charset("utf8")) {
             $this->errors[] = $this->db_connection->error;
         }
     }
 
     /**
-     * Authenticate user with database
+     * Check if the database connection was successful
+     * @return bool
      */
-    private function authenticateUser()
+    private function isDatabaseConnected()
     {
-        $user_name = $this->sanitizeInput($_POST['user_name']);
+        return $this->db_connection && !$this->db_connection->connect_errno;
+    }
 
+    /**
+     * Sanitize input to prevent SQL injection
+     * @param string $input
+     * @return string
+     */
+    private function sanitizeInput($input)
+    {
+        return $this->db_connection->real_escape_string($input);
+    }
+
+    /**
+     * Authenticate user credentials
+     * @param string $user_name
+     */
+    private function authenticateUser($user_name)
+    {
         $sql = $this->buildUserQuery($user_name);
         $result = $this->db_connection->query($sql);
 
-        if ($result->num_rows == 1) {
+        if ($result && $result->num_rows === 1) {
             $result_row = $result->fetch_object();
             $this->verifyPassword($result_row);
         } else {
@@ -114,7 +132,7 @@ class Login
     }
 
     /**
-     * Verify password and set user session if valid
+     * Verify user's password
      * @param object $result_row
      */
     private function verifyPassword($result_row)
@@ -124,16 +142,6 @@ class Login
         } else {
             $this->errors[] = "Usuario y/o contraseña no coinciden.";
         }
-    }
-
-    /**
-     * Sanitize input data
-     * @param string $input
-     * @return string
-     */
-    private function sanitizeInput($input)
-    {
-        return $this->db_connection->real_escape_string($input);
     }
 
     /**
@@ -164,6 +172,6 @@ class Login
      */
     public function isUserLoggedIn()
     {
-        return isset($_SESSION['user_login_status']) && $_SESSION['user_login_status'] == 1;
+        return isset($_SESSION['user_login_status']) && $_SESSION['user_login_status'] === 1;
     }
 }
