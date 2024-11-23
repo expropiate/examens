@@ -3,7 +3,7 @@ p    {color:white}
 
 body, html {
     height: 100%;
-    /* background-repeat se elimina ya que se sobrescribe por la propiedad shorthand 'background' */
+    /* Se elimina background-repeat y se mantiene la propiedad shorthand 'background' */
     background: url(../img/login-bg.JPG) no-repeat center center fixed;
     background-size: 100% 100%;
 }
