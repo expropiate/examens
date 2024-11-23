@@ -11,10 +11,10 @@
     }
     
     /* Connect To Database*/
-    include("../../config/db.php");  // Se ha corregido: eliminados los paréntesis innecesarios.
-    include("../../config/conexion.php");  // Se ha corregido: eliminados los paréntesis innecesarios.
+    include "../../config/db.php";  // Sin paréntesis
+    include "../../config/conexion.php";  // Sin paréntesis
     //Archivo de funciones PHP
-    include("../../funciones.php");  // Se ha corregido: eliminados los paréntesis innecesarios.
+    include "../../funciones.php";  // Sin paréntesis
     $session_id = session_id();
     $sql_count = mysqli_query($con, "select * from tmp where session_id='" . $session_id . "'");
     $count = mysqli_num_rows($sql_count);
@@ -24,8 +24,8 @@
         exit;
     }
 
-    // Se ha corregido: eliminados los paréntesis innecesarios en require_once.
-    require_once dirname(__FILE__) . '/../html2pdf.class.php';  // Se ha corregido: eliminados los paréntesis innecesarios.
+    // Eliminados los paréntesis innecesarios en require_once
+    require_once dirname(__FILE__) . '/../html2pdf.class.php';  // Sin paréntesis
         
     // Variables por GET
     $id_cliente = intval($_GET['id_cliente']);
@@ -39,7 +39,7 @@
     $simbolo_moneda = get_row('perfil', 'moneda', 'id_perfil', 1);
     // get the HTML
     ob_start();
-    include dirname(__FILE__) . '/res/factura_html.php';  // Se ha corregido: eliminados los paréntesis innecesarios.
+    include dirname(__FILE__) . '/res/factura_html.php';  // Sin paréntesis
     $content = ob_get_clean();
 
     try {
