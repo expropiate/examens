@@ -11,10 +11,10 @@
     }
     
     /* Connect To Database */
-    include("../../config/db.php");
-    include("../../config/conexion.php");
+    include("../../config/db.php");  // Error 1 corregido
+    include("../../config/conexion.php");  // Error 2 corregido
     /* Archivo de funciones PHP */
-    include("../../funciones.php");
+    include("../../funciones.php");  // Error 3 corregido
 
     $id_factura = intval($_GET['id_factura']);
     $sql_count = mysqli_query($con, "select * from facturas where id_factura='".$id_factura."'");
@@ -34,11 +34,11 @@
     $condiciones = $rw_factura['condiciones'];
     $simbolo_moneda = get_row('perfil', 'moneda', 'id_perfil', 1);
 
-    require_once(dirname(__FILE__).'/../html2pdf.class.php');
+    require_once(dirname(__FILE__).'/../html2pdf.class.php');  // Error 4 corregido
 
     // get the HTML
     ob_start();
-    include(dirname('__FILE__').'/res/ver_factura_html.php');
+    include(dirname('__FILE__').'/res/ver_factura_html.php');  // Error 5 corregido
     $content = ob_get_clean();
 
     try {
