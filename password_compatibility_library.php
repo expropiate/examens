@@ -8,7 +8,6 @@
  */
 
 if (!defined('PASSWORD_DEFAULT')) {
-
     define('PASSWORD_BCRYPT', 1);
     define('PASSWORD_DEFAULT', PASSWORD_BCRYPT);
 
@@ -24,44 +23,48 @@ if (!defined('PASSWORD_DEFAULT')) {
     function password_hash($password, $algo, array $options = array()) {
         if (!function_exists('crypt')) {
             trigger_error("Crypt must be loaded for password_hash to function", E_USER_WARNING);
-            return null;
+            return false;
         }
+
         if (!is_string($password)) {
             trigger_error("password_hash(): Password must be a string", E_USER_WARNING);
-            return null;
+            return false;
         }
+
         if (!is_int($algo)) {
             trigger_error("password_hash() expects parameter 2 to be long, " . gettype($algo) . " given", E_USER_WARNING);
-            return null;
-        }
-        switch ($algo) {
-            case PASSWORD_BCRYPT:
-                $cost = 10;
-                if (isset($options['cost'])) {
-                    $cost = $options['cost'];
-                    if ($cost < 4 || $cost > 31) {
-                        trigger_error(sprintf("password_hash(): Invalid bcrypt cost parameter specified: %d", $cost), E_USER_WARNING);
-                        return null;
-                    }
-                }
-                $raw_salt_len = 16;
-                $required_salt_len = 22;
-                $hash_format = sprintf("$2y$%02d$", $cost);
-                break;
-            default:
-                trigger_error(sprintf("password_hash(): Unknown password hashing algorithm: %s", $algo), E_USER_WARNING);
-                return null;
+            return false;
         }
 
-        // Generación del salt extraído a una función separada
-        $salt = generateSalt();
+        // Extract bcrypt handling into a separate function
+        if ($algo === PASSWORD_BCRYPT) {
+            return handle_bcrypt_hashing($password, $options);
+        }
 
-        $salt = substr($salt, 0, $required_salt_len);
+        trigger_error(sprintf("password_hash(): Unknown password hashing algorithm: %s", $algo), E_USER_WARNING);
+        return false;
+    }
 
+    /**
+     * Handle the bcrypt password hashing.
+     *
+     * @param string $password The password to hash
+     * @param array  $options  The options for bcrypt
+     *
+     * @return string|false The hashed password, or false on error.
+     */
+    function handle_bcrypt_hashing($password, array $options) {
+        $cost = isset($options['cost']) ? $options['cost'] : 10;
+        if ($cost < 4 || $cost > 31) {
+            trigger_error(sprintf("password_hash(): Invalid bcrypt cost parameter specified: %d", $cost), E_USER_WARNING);
+            return false;
+        }
+
+        $salt = generate_salt();
+        $hash_format = sprintf("$2y$%02d$", $cost);
         $hash = $hash_format . $salt;
 
         $ret = crypt($password, $hash);
-
         if (!is_string($ret) || strlen($ret) <= 13) {
             return false;
         }
@@ -69,12 +72,19 @@ if (!defined('PASSWORD_DEFAULT')) {
         return $ret;
     }
 
-    function generateSalt($raw_salt_len = 16, $required_salt_len = 22) {
+    /**
+     * Generate a random salt for bcrypt hashing.
+     *
+     * @return string The generated salt.
+     */
+    function generate_salt() {
+        $raw_salt_len = 16;
+        $required_salt_len = 22;
         $buffer = '';
         $buffer_valid = false;
 
-        // Intenta usar funciones existentes para generar un salt
-        if (function_exists('mcrypt_create_iv') && !defined('PHALANGER')) {
+        // Try different methods to generate the salt
+        if (function_exists('mcrypt_create_iv')) {
             $buffer = mcrypt_create_iv($raw_salt_len, MCRYPT_DEV_URANDOM);
             if ($buffer) {
                 $buffer_valid = true;
@@ -90,42 +100,24 @@ if (!defined('PASSWORD_DEFAULT')) {
 
         if (!$buffer_valid && is_readable('/dev/urandom')) {
             $f = fopen('/dev/urandom', 'r');
-            $read = strlen($buffer);
-            while ($read < $raw_salt_len) {
-                $buffer .= fread($f, $raw_salt_len - $read);
-                $read = strlen($buffer);
-            }
+            $buffer = fread($f, $raw_salt_len);
             fclose($f);
-            if ($read >= $raw_salt_len) {
-                $buffer_valid = true;
-            }
+            $buffer_valid = true;
         }
 
-        if (!$buffer_valid || strlen($buffer) < $raw_salt_len) {
-            $bl = strlen($buffer);
+        if (!$buffer_valid) {
+            // Fallback to random generation
             for ($i = 0; $i < $raw_salt_len; $i++) {
-                if ($i < $bl) {
-                    $buffer[$i] = $buffer[$i] ^ chr(mt_rand(0, 255));
-                } else {
-                    $buffer .= chr(mt_rand(0, 255));
-                }
+                $buffer .= chr(mt_rand(0, 255));
             }
         }
 
-        return str_replace('+', '.', base64_encode($buffer));
+        // Ensure the salt is of correct length
+        return str_replace('+', '.', base64_encode(substr($buffer, 0, $required_salt_len)));
     }
 
     /**
-     * Get information about the password hash. Returns an array of the information
-     * that was used to generate the password hash.
-     *
-     * array(
-     *    'algo' => 1,
-     *    'algoName' => 'bcrypt',
-     *    'options' => array(
-     *        'cost' => 10,
-     *    ),
-     * )
+     * Get information about the password hash.
      *
      * @param string $hash The password hash to extract info from
      *
@@ -149,8 +141,48 @@ if (!defined('PASSWORD_DEFAULT')) {
     /**
      * Determine if the password hash needs to be rehashed according to the options provided
      *
-     * If the answer is true, after validating the password using password_verify, rehash it.
-     *
      * @param string $hash    The hash to test
      * @param int    $algo    The algorithm used for new password hashes
-     * @param array  $options
+     * @param array  $options The options array passed to password_hash
+     *
+     * @return boolean True if the password needs to be rehashed.
+     */
+    function password_needs_rehash($hash, $algo, array $options = array()) {
+        $info = password_get_info($hash);
+        if ($info['algo'] != $algo) {
+            return true;
+        }
+
+        if ($algo === PASSWORD_BCRYPT && isset($options['cost']) && $options['cost'] !== $info['options']['cost']) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Verify a password against a hash using a timing attack resistant approach
+     *
+     * @param string $password The password to verify
+     * @param string $hash     The hash to verify against
+     *
+     * @return boolean If the password matches the hash
+     */
+    function password_verify($password, $hash) {
+        if (!function_exists('crypt')) {
+            trigger_error("Crypt must be loaded for password_verify to function", E_USER_WARNING);
+            return false;
+        }
+        $ret = crypt($password, $hash);
+        if (!is_string($ret) || strlen($ret) != strlen($hash) || strlen($ret) <= 13) {
+            return false;
+        }
+
+        $status = 0;
+        for ($i = 0; $i < strlen($ret); $i++) {
+            $status |= (ord($ret[$i]) ^ ord($hash[$i]));
+        }
+
+        return $status === 0;
+    }
+}
