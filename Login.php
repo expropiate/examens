@@ -1,8 +1,8 @@
 <?php
 
 /**
- * Class login
- * handles the user's login and logout process
+ * Class Login
+ * Handles the user's login and logout process
  */
 class Login
 {
@@ -10,90 +10,42 @@ class Login
      * @var object The database connection
      */
     private $db_connection = null;
+
     /**
      * @var array Collection of error messages
      */
     public $errors = array();
+
     /**
      * @var array Collection of success / neutral messages
      */
     public $messages = array();
 
     /**
-     * the function "__construct()" automatically starts whenever an object of this class is created,
-     * you know, when you do "$login = new Login();"
+     * Constructor: Automatically starts when an object of this class is created
      */
     public function __construct()
     {
-        // create/read session, absolutely necessary
+        // Create/read session, absolutely necessary
         session_start();
 
-        // check the possible login actions:
-        // if user tried to log out (happen when user clicks logout button)
+        // Check the possible login actions:
         if (isset($_GET["logout"])) {
             $this->doLogout();
-        }
-        // login via post data (if user just submitted a login form)
-        elseif (isset($_POST["login"])) {
-            $this->dologinWithPostData();
+        } elseif (isset($_POST["login"])) {
+            $this->handleLogin();
         }
     }
 
     /**
-     * log in with post data
+     * Handle the login process
      */
-    private function dologinWithPostData()
+    private function handleLogin()
     {
-        // check login form contents
-        if (empty($_POST['user_name'])) {
-            $this->errors[] = "Username field was empty.";
-        } elseif (empty($_POST['user_password'])) {
-            $this->errors[] = "Password field was empty.";
-        } elseif (!empty($_POST['user_name']) && !empty($_POST['user_password'])) {
-
-            // create a database connection, using the constants from config/db.php (which we loaded in index.php)
-            $this->db_connection = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
-
-            // change character set to utf8 and check it
-            if (!$this->db_connection->set_charset("utf8")) {
-                $this->errors[] = $this->db_connection->error;
-            }
-
-            // if no connection errors (= working database connection)
-            if (!$this->db_connection->connect_errno) {
-
-                // escape the POST stuff
-                $user_name = $this->db_connection->real_escape_string($_POST['user_name']);
-
-                // database query, getting all the info of the selected user (allows login via email address in the
-                // username field)
-                $sql = "SELECT user_id, user_name, user_email, user_password_hash
-                        FROM users
-                        WHERE user_name = '" . $user_name . "' OR user_email = '" . $user_name . "';";
-                $result_of_login_check = $this->db_connection->query($sql);
-
-                // if this user exists
-                if ($result_of_login_check->num_rows == 1) {
-
-                    // get result row (as an object)
-                    $result_row = $result_of_login_check->fetch_object();
-
-                    // using PHP 5.5's password_verify() function to check if the provided password fits
-                    // the hash of that user's password
-                    if (password_verify($_POST['user_password'], $result_row->user_password_hash)) {
-
-                        // write user data into PHP SESSION (a file on your server)
-                        $_SESSION['user_id'] = $result_row->user_id;
-						$_SESSION['user_name'] = $result_row->user_name;
-                        $_SESSION['user_email'] = $result_row->user_email;
-                        $_SESSION['user_login_status'] = 1;
-
-                    } else {
-                        $this->errors[] = "Usuario y/o contraseña no coinciden.";
-                    }
-                } else {
-                    $this->errors[] = "Usuario y/o contraseña no coinciden.";
-                }
+        if ($this->validateLoginForm()) {
+            $this->connectToDatabase();
+            if ($this->db_connection && !$this->db_connection->connect_errno) {
+                $this->authenticateUser();
             } else {
                 $this->errors[] = "Problema de conexión de base de datos.";
             }
@@ -101,28 +53,117 @@ class Login
     }
 
     /**
-     * perform the logout
+     * Validate login form data
+     * @return bool
      */
-    public function doLogout()
+    private function validateLoginForm()
     {
-        // delete the session of the user
-        $_SESSION = array();
-        session_destroy();
-        // return a little feeedback message
-        $this->messages[] = "Has sido desconectado.";
+        if (empty($_POST['user_name'])) {
+            $this->errors[] = "El campo de usuario está vacío.";
+            return false;
+        }
 
+        if (empty($_POST['user_password'])) {
+            $this->errors[] = "El campo de contraseña está vacío.";
+            return false;
+        }
+
+        return true;
     }
 
     /**
-     * simply return the current state of the user's login
-     * @return boolean user's login status
+     * Establish database connection
+     */
+    private function connectToDatabase()
+    {
+        $this->db_connection = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
+
+        if (!$this->db_connection->set_charset("utf8")) {
+            $this->errors[] = $this->db_connection->error;
+        }
+    }
+
+    /**
+     * Authenticate user with database
+     */
+    private function authenticateUser()
+    {
+        $user_name = $this->sanitizeInput($_POST['user_name']);
+
+        $sql = $this->buildUserQuery($user_name);
+        $result = $this->db_connection->query($sql);
+
+        if ($result->num_rows == 1) {
+            $result_row = $result->fetch_object();
+            $this->verifyPassword($result_row);
+        } else {
+            $this->errors[] = "Usuario y/o contraseña no coinciden.";
+        }
+    }
+
+    /**
+     * Build query to fetch user information
+     * @param string $user_name
+     * @return string
+     */
+    private function buildUserQuery($user_name)
+    {
+        return "SELECT user_id, user_name, user_email, user_password_hash
+                FROM users
+                WHERE user_name = '$user_name' OR user_email = '$user_name';";
+    }
+
+    /**
+     * Verify password and set user session if valid
+     * @param object $result_row
+     */
+    private function verifyPassword($result_row)
+    {
+        if (password_verify($_POST['user_password'], $result_row->user_password_hash)) {
+            $this->setUserSession($result_row);
+        } else {
+            $this->errors[] = "Usuario y/o contraseña no coinciden.";
+        }
+    }
+
+    /**
+     * Sanitize input data
+     * @param string $input
+     * @return string
+     */
+    private function sanitizeInput($input)
+    {
+        return $this->db_connection->real_escape_string($input);
+    }
+
+    /**
+     * Set user session data
+     * @param object $result_row
+     */
+    private function setUserSession($result_row)
+    {
+        $_SESSION['user_id'] = $result_row->user_id;
+        $_SESSION['user_name'] = $result_row->user_name;
+        $_SESSION['user_email'] = $result_row->user_email;
+        $_SESSION['user_login_status'] = 1;
+    }
+
+    /**
+     * Perform the logout
+     */
+    public function doLogout()
+    {
+        $_SESSION = array();
+        session_destroy();
+        $this->messages[] = "Has sido desconectado.";
+    }
+
+    /**
+     * Return the current state of the user's login
+     * @return bool
      */
     public function isUserLoggedIn()
     {
-        if (isset($_SESSION['user_login_status']) AND $_SESSION['user_login_status'] == 1) {
-            return true;
-        }
-        // default return
-        return false;
+        return isset($_SESSION['user_login_status']) && $_SESSION['user_login_status'] == 1;
     }
 }
